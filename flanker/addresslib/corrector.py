@@ -14,22 +14,79 @@ if no suggestion exists.
 [1] http://xlinux.nist.gov/dads/HTML/ratcliffObershelp.html
 """
 
+import re
+import time
 import difflib
+from collections import Counter
+from Levenshtein import ratio
 
 
-def suggest(word, cutoff=0.77):
+def suggest(word, cutoff=0.77, override=None, algo='difflib'):
     """
     Given a domain and a cutoff heuristic, suggest an alternative or return the
     original domain if no suggestion exists.
     """
+    word_list = override if override else MOST_COMMON_DOMAINS
+
     if word in LOOKUP_TABLE:
         return LOOKUP_TABLE[word]
 
-    guess = difflib.get_close_matches(word, MOST_COMMON_DOMAINS, n=1, cutoff=cutoff)
+    if algo == 'levenshtein':
+        guess = levenshtein(word, word_list, cutoff=cutoff)
+    elif algo == 'spellr':
+        guess = spelling(word, word_list)
+    else:
+        guess = difflib.get_close_matches(word, word_list, n=1, cutoff=cutoff)
+
     if guess and len(guess) > 0:
         return guess[0]
     return word
 
+
+def levenshtein(word, word_list, n=1, cutoff=0.80):
+    """
+    Attempted implementation of Levenshtein c extension
+    """
+    matches = list()
+    matches.append([domain for domain in word_list if ratio(word, domain) > cutoff and len(matches) <= n])
+    return matches[0]
+
+
+def spelling(word, word_list, n=1, cutoff=0.00):
+    """
+    Implemented norvig's solution from: http://norvig.com/spell-correct.html
+    For additional variety of potential solutions.
+
+    Otherwise i'm not a fan of nested functions
+    """
+    WORDS = Counter(word_list)
+
+    def probability(word, WORDS):
+        N = sum(WORDS.values())
+        return WORDS[word] / N
+
+    def correction(word):
+        return max(candidates(word), key=probability)
+
+    def candidates(word):
+        return (known([word]) or known(edits1(word)) or known(edits2(word)) or [word])
+
+    def known(words):
+        return set(w for w in words if w in words)
+
+    def edits1(word):
+        letters = 'abcdefghijklmnopqrstuvwxyz'
+        splits = [(word[:i], word[i:]) for i in range(len(word) + 1)]
+        deletes = [L + R[1:] for L, R in splits if R]
+        transposes = [L + R[1] + R[0] + R[2:] for L, R in splits if len(R) > 1]
+        replaces = [L + c + R[1:] for L, R in splits if R for c in letters]
+        inserts = [L + c + R for L, R in splits for c in letters]
+        return set(deletes + transposes + replaces + inserts)
+
+    def edits2(word):
+        return (e2 for e1 in edits1(word) for e2 in edits1(e1))
+
+    return correction(word)
 
 MOST_COMMON_DOMAINS = [
     # mailgun :)
@@ -258,3 +315,38 @@ LOOKUP_TABLE = {
     u'shaw':        u'shaw.ca',
     u'bell':        u'bell.net'
 }
+
+
+if __name__ == '__main__':
+    word = 'yahuo.com'
+
+    def classic(word):
+        start_time = time.time()
+        output = suggest(word)
+        duration = time.time() - start_time
+        return float(duration), output
+
+    def new(word):
+        start_time = time.time()
+        output = suggest(word, algo='levenshtein')
+        duration = time.time() - start_time
+        return float(duration), output
+
+    def spellr(word):
+        start_time = time.time()
+        output = suggest(word, algo='levenshtein')
+        duration = time.time() - start_time
+        return float(duration), output
+
+    difflib_time, difflib_out = classic(word)
+    leve_time, leve_out = new(word)
+    spell_time, spell_out = spellr(word)
+
+    print("Algo difflib: {}".format(difflib_out))
+    print("Difflib Time: %.20f or {}ms".format(difflib_time * 1000) % difflib_time)
+
+    print("Algo leve: {}".format(leve_out))
+    print("Leve Time: %.20f or {}ms".format(leve_time * 1000) % leve_time)
+
+    print("Algo spell: {}".format(leve_out))
+    print("Spell Time: %.20f or {}ms".format(spell_time * 1000) % spell_time)

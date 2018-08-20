@@ -10,7 +10,7 @@ tests_require = [
 ],
 
 setup(name='flanker',
-      version='0.9.2',
+      version='0.9.3',
       description='Mailgun Parsing Tools',
       long_description=open('README.rst').read(),
       classifiers=[
@@ -41,7 +41,8 @@ setup(name='flanker',
           'regex>=0.1.20110315',
           'six',
           'tld',
-          'WebOb>=0.9.8'],
+          'WebOb>=0.9.8',
+          'python-Levenshtein'],
       extras_require={
           'validator': [
               'dnsq>=1.1.6',
